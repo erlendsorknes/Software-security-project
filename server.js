@@ -4,19 +4,19 @@ const express = require("express");
 const favicon = require("serve-favicon");
 const bodyParser = require("body-parser");
 const session = require("express-session");
-// const csrf = require('csurf');
+const csrf = require('csurf');
 const consolidate = require("consolidate"); // Templating library adapter for Express
 const swig = require("swig");
-// const helmet = require("helmet");
+const helmet = require("helmet");
 const MongoClient = require("mongodb").MongoClient; // Driver for connecting to MongoDB
 const http = require("http");
 const marked = require("marked");
-//const nosniff = require('dont-sniff-mimetype');
+const nosniff = require('dont-sniff-mimetype');
 const app = express(); // Web framework to handle routing requests
 const routes = require("./app/routes");
 const { port, db, cookieSecret } = require("./config/config"); // Application config properties
-/*
-// Fix for A6-Sensitive Data Exposure
+const genuuid = require("uuid/v4");
+
 // Load keys for establishing secure HTTPS connection
 const fs = require("fs");
 const https = require("https");
@@ -25,7 +25,7 @@ const httpsOptions = {
     key: fs.readFileSync(path.resolve(__dirname, "./artifacts/cert/server.key")),
     cert: fs.readFileSync(path.resolve(__dirname, "./artifacts/cert/server.crt"))
 };
-*/
+
 
 MongoClient.connect(db, (err, db) => {
     if (err) {
@@ -76,24 +76,22 @@ MongoClient.connect(db, (err, db) => {
 
     // Enable session management using express middleware
     app.use(session({
-        // genid: (req) => {
-        //    return genuuid() // use UUIDs for session IDs
-        //},
+         genid: (req) => {
+            return genuuid() // use UUIDs for session IDs
+        },
         secret: cookieSecret,
         // Both mandatory in Express v4
         saveUninitialized: true,
         resave: true,
-        /*
-        // Fix for A5 - Security MisConfig
         // Use generic cookie name
         key: "sessionId",
-        */
+        
 
         
-        // Fix for A3 - XSS
-        // TODO: Add "maxAge"
+        // XSS
         cookie: {
             httpOnly: true,
+            maxAge: 3600000, // 1 hour
             // Remember to start an HTTPS server to get this working
             secure: true
         }
@@ -101,8 +99,7 @@ MongoClient.connect(db, (err, db) => {
 
     }));
 
-    /*
-    // Fix for A8 - CSRF
+    
     // Enable Express csrf protection
     app.use(csrf());
     // Make csrf token available in templates
@@ -110,19 +107,16 @@ MongoClient.connect(db, (err, db) => {
         res.locals.csrftoken = req.csrfToken();
         next();
     });
-    */
 
     // Register templating engine
     app.engine(".html", consolidate.swig);
     app.set("view engine", "html");
     app.set("views", `${__dirname}/app/views`);
-    // Fix for A5 - Security MisConfig
-    // TODO: make sure assets are declared before app.use(session())
     app.use(express.static(`${__dirname}/app/assets`));
+    
 
 
     // Initializing marked library
-    // Fix for A9 - Insecure Dependencies
     marked.setOptions({
         sanitize: true
     });
@@ -133,25 +127,21 @@ MongoClient.connect(db, (err, db) => {
 
     // Template system setup
     swig.setDefaults({
-        // Autoescape disabled
-        // autoescape: false
-        
-        // Fix for A3 - XSS, enable auto escaping
+        root: __dirname + "/app/views",
         autoescape: true // default value
         
     });
 
-    // Insecure HTTP connection
-    http.createServer(app).listen(port, () => {
-        console.log(`Express http server listening on port ${port}`);
-    });
+    // // Insecure HTTP connection
+    // http.createServer(app).listen(port, () => {
+    //     console.log(`Express http server listening on port ${port}`);
+    // });
 
-    /*
-    // Fix for A6-Sensitive Data Exposure
+    
+    
     // Use secure HTTPS protocol
-    https.createServer(httpsOptions, app).listen(port, () => {
-        console.log(`Express http server listening on port ${port}`);
+    https.createServer(httpsOptions, app).listen(port, function() {
+        console.log("Express https server listening on port " + port);
     });
-    */
 
 });

@@ -1,8 +1,6 @@
 const UserDAO = require("../data/user-dao").UserDAO;
 const AllocationsDAO = require("../data/allocations-dao").AllocationsDAO;
-const {
-    environmentalScripts
-} = require("../../config/config");
+const { environmentalScripts } = require("../../config/config");
 
 /* The SessionHandler must be constructed with a connected db */
 function SessionHandler(db) {
@@ -19,18 +17,19 @@ function SessionHandler(db) {
 
         allocationsDAO.update(user._id, stocks, funds, bonds, (err) => {
             if (err) return next(err);
+            next(); // Ensure next is called after the update is complete
         });
     };
 
     this.isAdminUserMiddleware = (req, res, next) => {
         if (req.session.userId) {
             return userDAO.getUserById(req.session.userId, (err, user) => {
-               return user && user.isAdmin ? next() : res.redirect("/login");
+                if (err) return next(err);
+                return user && user.isAdmin ? next() : res.redirect("/login");
             });
         }
         console.log("redirecting to login");
         return res.redirect("/login");
-
     };
 
     this.isLoggedInMiddleware = (req, res, next) => {
@@ -51,10 +50,7 @@ function SessionHandler(db) {
     };
 
     this.handleLoginRequest = (req, res, next) => {
-        const {
-            userName,
-            password
-        } = req.body;
+        const { userName, password } = req.body;
         userDAO.validateLogin(userName, password, (err, user) => {
             const errorMessage = "Invalid username and/or password";
             const invalidUserNameErrorMessage = "Invalid username";
@@ -111,10 +107,10 @@ function SessionHandler(db) {
 
             // Fix the problem by regenerating a session in each login
             // by wrapping the below code as a function callback for the method req.session.regenerate()
-            // i.e:
-            // `req.session.regenerate(() => {})`
-            req.session.userId = user._id;
-            return res.redirect(user.isAdmin ? "/benefits" : "/dashboard");
+            req.session.regenerate(() => {
+                req.session.userId = user._id;
+                return res.redirect(user.isAdmin ? "/benefits" : "/dashboard");
+            });
         });
     };
 
@@ -222,26 +218,20 @@ function SessionHandler(db) {
                     if (err) return next(err);
 
                     //prepare data for the user
-                    prepareUserData(user, next);
-                    /*
-                    sessionDAO.startSession(user._id, (err, sessionId) => {
+                    prepareUserData(user, (err) => {
                         if (err) return next(err);
-                        res.cookie("session", sessionId);
-                        req.session.userId = user._id;
-                        return res.render("dashboard", { ...user, environmentalScripts });
-                    });
-                    */
-                    req.session.regenerate(() => {
-                        req.session.userId = user._id;
-                        // Set userId property. Required for left nav menu links
-                        user.userId = user._id;
 
-                        return res.render("dashboard", {
-                            ...user,
-                            environmentalScripts
+                        req.session.regenerate(() => {
+                            req.session.userId = user._id;
+                            // Set userId property. Required for left nav menu links
+                            user.userId = user._id;
+
+                            return res.render("dashboard", {
+                                ...user,
+                                environmentalScripts
+                            });
                         });
                     });
-
                 });
             });
         } else {
@@ -254,24 +244,20 @@ function SessionHandler(db) {
     };
 
     this.displayWelcomePage = (req, res, next) => {
-        let userId;
-
         if (!req.session.userId) {
             console.log("welcome: Unable to identify user...redirecting to login");
             return res.redirect("/login");
         }
 
-        userId = req.session.userId;
-
-        userDAO.getUserById(userId, (err, doc) => {
+        userDAO.getUserById(req.session.userId, (err, doc) => {
             if (err) return next(err);
-            doc.userId = userId;
+            doc.userId = req.session.userId;
             return res.render("dashboard", {
                 ...doc,
                 environmentalScripts
             });
-        });
-    };
+        }
+        );
+    }
 }
-
 module.exports = SessionHandler;
